@@ -1,0 +1,95 @@
+---
+title: "Assignment 5 - Meta-analysis of pitch in schizophrenia"
+author: "Riccardo Fusaroli"
+date: "3/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Building on the shoulders of giants: meta-analysis
+
+## Questions to be answered
+ 
+1. What is the current evidence for distinctive vocal patterns in schizophrenia? Report how many papers report quantitative estimates, comment on what percentage of the overall studies reviewed they represent (see PRISMA chart) your method to analyze them, the estimated effect size of the difference (mean effect size and standard error) and forest plots representing it. N.B. Only measures of pitch mean and pitch sd are required for the assignment. Feel free to ignore the rest (although pause behavior looks interesting, if you check my article).
+
+2. Do the results match your own analysis from Assignment 3? If you add your results to the meta-analysis, do the estimated effect sizes change? Report the new estimates and the new forest plots.
+
+3. Assess the quality of the literature: report and comment on heterogeneity of the studies (tau, I2), on publication bias (funnel plot), and on influential studies.
+
+## Tips on the process to follow:
+
+- Download the data on all published articles analyzing voice in schizophrenia and the prisma chart as reference of all articles found and reviewed
+- Look through the dataset to find out which columns to use, and if there is any additional information written as comments (real world data is always messy!).
+    * Hint: PITCH_F0M and PITCH_F0SD group of variables are what you need
+    * Hint: Make sure you read the comments in the columns: `pitch_f0_variability`, `frequency`, `Title`,  `ACOUST_ANA_DESCR`, `DESCRIPTION`, and `COMMENTS`
+- Following the procedure in the slides calculate effect size and standard error of the effect size per each study. N.B. we focus on pitch mean and pitch standard deviation.
+ . first try using lmer (to connect to what you know of mixed effects models)
+ . then use rma() (to get some juicy additional statistics)
+
+- Build a forest plot of the results (forest(model))
+ 
+- Go back to Assignment 3, add your own study to the data table, and re-run meta-analysis. Do the results change?
+
+- Now look at the output of rma() and check tau and I2
+
+
+
+
+
+
+```{r}
+pacman::p_load(pacman, readxl, tidyverse)
+
+data <- read_excel("Matrix_MetaAnalysis_Diagnosis_updated290719.xlsx")
+
+good_data <- data %>% select(Specification, StudyID, DIAGNOSIS, MALE_SZ, FEMALE_SZ, MALE_HC, FEMALE_HC, SAMPLE_SIZE_SZ, SAMPLE_SIZE_HC, PITCH_F0_HC_M, PITCH_F0_HC_SD, PITCH_F0_SZ_M, PITCH_F0_SZ_SD, PITCH_F0SD_HC_M, PITCH_F0SD_HC_SD, PITCH_F0SD_SZ_M, PITCH_F0SD_SZ_SD)
+
+colnames(good_data) <- c("Specification", "StudyID", "Diagnosis", "Male_SZ", "Female_SZ", "Male_HC", "Female_HC", "Sample_size_SZ", "Sample_Size_HC", "F1_HC_M", "F1_HC_SD", "F1_SZ_M", "F1_SZ_SD", "F2_HC_M", "F2_HC_SD", "F2_SZ_M", "F2_SZ_SD")
+
+goodboi_data<- filter()
+better_data <- better_data %>% filter()
+
+
+# Each study collects MEANS of each participant's pitch, and a SD of each participant's pitch.
+
+# THEN, they take the MEAN of their participant's means, according to HC or SZ. We also want a Standard Deviation of those two means.
+# SAME DEAL for the standard deviation of both HC and SZ.
+
+
+
+# yi ~ 1 + (1|Study), weight = 1 / vi
+#    ~ 1 + TASK
+## So, what should we put in place of "Study"? Article? Study? Study.
+## yi is within study i estimated cohen's d.
+
+
+
+
+
+
+# mean of two groups (HC and SZ). Means of means.
+# Each of these means has a standard deviation.
+
+#Cohen's D= (Mean 1 –Mean 2) / Pooled SD
+
+# Pooled Standard Deviation: \sqrt (SD^2_1 + SD^2_2 / 2        )
+
+
+#Calculating cohen's d manually:
+
+cohenD <- (mean(better_data$PITCH_F0_HC_M) - mean(better_data$PITCH_F0_SZ_M)) / sqrt((sd(better_data$PITCH_F0_HC_M) + sd(better_data$PITCH_F0_SZ_M)))
+
+cohenD
+
+p_load(metafor)
+
+better_data<-na.omit(better_data)
+PitchMeanES<-escalc("SMD", n1i = SAMPLE_SIZE_SZ, n2i = SAMPLE_SIZE_HC, m1i = PITCH_F0_SZ_M, m2i = PITCH_F0_HC_M, sd1i = PITCH_F0_SZ_SD, sd2i = PITCH_F0_HC_SD, data = better_data)
+
+PitchMeanES
+
+
+```
