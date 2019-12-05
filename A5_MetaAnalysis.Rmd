@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+
 ```
 
 # Building on the shoulders of giants: meta-analysis
@@ -30,16 +32,24 @@ knitr::opts_chunk$set(echo = TRUE)
 ######### THINGS TO ASK RICCARDO ABOUT
 
 
-
-- Is including a fixed effect of "task" what was meant by "context". Should we do any more with this model? Should we report the significant results, et cetera, et cetera.
 - Is it a problem that the random effects for Feature 2 do not explain anything at all (boundary singular fit)
 - What does the random effects mean?
-- the hell the plots means???????????!1????
--  How do we interpret the summaries of rma with tasks? <- AND the resulting funky forest plots?
-- How do we interpret the influencial studies analysis, and what should we do with it? 
+- the hell the plots means???????????!????
+
+
+- How do we interpret the summaries of rma with tasks? <- AND the resulting funky forest plots?
+- How do we interpret the influencial studies analysis, and what should we do with it?
 - standard deviation of mean or mean of standard deviation (at trial level) when adding Assignment 3
+- Why can we include the studies where the pitch is measured in semitones?
 
+##### THINGS THAT NEED TO BE RESEARCHED
 
+- What does adding a fixed effect / moderator mean to an RMA? What is a Test of Moderators?
+Moderator = interaction effect. 
+Test of moderators = Wald-type chi-square test with X degrees of freedom, testing if the effect of the moderator is significant.  
+- How do we interpret all the fancy numbers in an influence() test? Can we look up the function? What creates the "inf" statistic (the one that shows a *)?
+- Model comparison between model with or without random effects (though, since it is an explanatory model, maybe it isn't that big of a deal?)
+- How the freakin' hell do you interpret forest plots? With and without creepy shadows?
 
 
 ## Questions to be answered
@@ -115,6 +125,12 @@ es_f1 <- escalc('SMD',
                       data = df_f1)
 
 
+## Getting some numbers for reporting purposes:
+
+sum(es_f1$n_hc) #151 healthy controls in 6 studies
+sum(es_f1$n_sz) # 249 schizophrenics in 6 studies
+
+
 # Effect size calculations for feature 2 (Participant's pitch variability)
 es_f2 <- escalc('SMD',
                       n1i = n_hc,
@@ -124,6 +140,12 @@ es_f2 <- escalc('SMD',
                       sd1i = f2_hc_sd, 
                       sd2i = f2_sz_sd,
                       data = df_f2)
+
+
+sum(es_f2$n_hc) #449 healthy controls in 15 studies
+sum(es_f2$n_sz) #662 schizophrenics in 15 studies
+
+
 
 ## So, now we have two variables added to the two datasets called yi and vi. Huzzah.
 
@@ -150,6 +172,11 @@ summary(mod_f2) # Alright, the estimated SMD is 0.2333. So, hold on to your hors
 
 # this is something we could ask Ricardo about.
 
+
+# Comparing the mod_f2 to the alternative model without random effects.
+mod_f2_alt <- lm(yi ~ 1, es_f2, weights = 1/vi)
+anova(mod_f2, mod_f2_alt)
+# the alternative model withour random effect is better (lower AIC and BIC scores)
 
 # We may wish to include a fixed effect of type of task, to see if it changes anything:
 
@@ -182,7 +209,7 @@ forest(rma_f1) # Nice forest plot of the metaanalysis! ...What does it show agai
 
 #Test for Heterogeneity:
 #Q(df = 5) = 9.8472, p-val = 0.0797
-
+?rma
 # Now with task 
 rma_f1_task <-rma(yi, vi, mods = cbind(task), data = es_f1, slab=studyID)
 summary(rma_f1_task) # No significant effect of task. Consistent results. Yaaaay.
@@ -207,7 +234,7 @@ summary(rma_f2)
 forest(rma_f2)# It do be lookethening like there doth be an influential study, yo.15 <- dat one.
 
 # Now with task (again)
-rma_task_f2 <-rma(yi, vi, mods = cbind(task), data = es_f2, slab = studyID)
+rma_task_f2 <- rma(yi, vi, mods = cbind(task), data = es_f2, slab = studyID)
 summary(rma_task_f2)
 #tau^2 (estimated amount of residual heterogeneity):     1.2275 (SE = 0.5120)
 #tau (square root of estimated tau^2 value):             1.1079
@@ -253,6 +280,8 @@ inf_2 <-influence(rma_f2)
 print(inf_2)
 plot(inf_2)
 
+# R student - Studentized residuals. Each residual divided by the estimate of it's standard deviation. Presumably, the greater the number, the higher the chance of it being an outlier.
+# DFFITS - Seems to be equivalent to do.coef
 
 
 
@@ -381,6 +410,12 @@ es_f1_2 <- escalc('SMD',
                       data = all_f1)
 
 
+
+sum(es_f1_2$n_hc) #322 healthy controls in 13 studies
+sum(es_f1_2$n_sz) #412 schizophrenics in 13 studies
+
+
+
 # Effect size calculations for feature 2 (Participant's pitch variability)
 es_f2_2 <- escalc('SMD',
                       n1i = n_hc,
@@ -391,9 +426,12 @@ es_f2_2 <- escalc('SMD',
                       sd2i = f2_sz_sd,
                       data = all_f2)
 
+sum(es_f2_2$n_hc) #670 healthy controls in 15 studies
+sum(es_f2_2$n_sz) #825 schizophrenics in 15 studies
+
 ## Recreating the lmer models
 # Thus, the basic pattern becomes:
-
+?influence
 mod_f1_2 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f1_2, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
 summary(mod_f1_2) # We get boundary (singular) fit again. Ouch. Does it matter? WHo knows. Maybe Riccardo does.
 
@@ -401,10 +439,19 @@ summary(mod_f1_2) # We get boundary (singular) fit again. Ouch. Does it matter? 
 
 # We may wish to include a fixed effect of type of task, to see if it changes anything:
 
+# Comparing the mod_f1_2 model to the alternative model withour random effects.
+mod_f1_2_alt <- lm(yi ~ 1, es_f1_2, weights = 1/vi)
+anova(mod_f1_2, mod_f1_2_alt)
+# the alternative model is again better 
+
 ## Rinse repeat for F2:
 
 mod_f2_2 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f2_2, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
 summary(mod_f2_2) # Interestingly, similar results. 
+
+# Again comparing to the alternative model without random effects - the alt. model is better.
+mod_f2_2_alt <- lm(yi ~ 1, es_f2_2, weights = 1/vi)
+anova(mod_f2_2, mod_f2_2_alt)
 
 # Once again...... this is the weighted average standardized mean difference (with random effects) of the differences in Standard Deviation between Healthy Controls and Schizophrenics... across studies.
 
@@ -455,25 +502,6 @@ summary(rma_f2_2)
 
 forest(rma_f2_2)# It do be lookethening like there doth be an influential study, yo.15 <- dat one.
 
-# Now with task (again)
-rma_task_f2 <-rma(yi, vi, mods = cbind(task), data = es_f2, slab = studyID)
-summary(rma_task_f2)
-#tau^2 (estimated amount of residual heterogeneity):     1.2275 (SE = 0.5120)
-#tau (square root of estimated tau^2 value):             1.1079
-#I^2 (residual heterogeneity / unaccounted variability): 95.16%
-#H^2 (unaccounted variability / sampling variability):   20.68
-#R^2 (amount of heterogeneity accounted for):            0.00%
-
-#Test for Residual Heterogeneity:
-#QE(df = 13) = 158.7379, p-val < .0001
-
-#Test of Moderators (coefficient 2):
-#QM(df = 1) = 0.7244, p-val = 0.3947
-
-
-forest(rma_task_f2)
-
-
 ### TESTING FOR INFLUENTIAL STUDIES
 
 ## Where does the heterogeneity come from? Probably from bad p-hacked studies with too few participants and bloated effect sizes (assuming of course there are any bad studies). How do we check for those?
@@ -491,29 +519,26 @@ print(inf_4)
 plot(inf_4)
 
 
-
-
-
 ### BUT WHAT ABOUT PUBLICATION BIAS!?
 
 ## We test for that using Funnel Plots: Plotting effect size against standard error. That is, we check whether the larger the effect size the more unreliable the estimate (otherwise said, whether only bad studies have good results)
 
-funnel(rma_f1, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
+funnel(rma_f1_2, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
 
 ## Is a plot enough?
 
-regtest(rma_f1)
-ranktest(rma_f1)
+regtest(rma_f1_2)
+ranktest(rma_f1_2)
 # None of these tests show significant assymetry.
 
 ### INDEED, WHAT ABOUT PUBLICATION BIAS!?
 
-funnel(rma_f2, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
+funnel(rma_f2_2, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
 
 ## Is a plot enough?
 
-regtest(rma_f2)
-ranktest(rma_f2)
+regtest(rma_f2_2)
+ranktest(rma_f2_2)
 # It's not not publication bias.
 
 
