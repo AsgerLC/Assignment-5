@@ -1,0 +1,487 @@
+---
+title: "Assignment 5 - Meta-analysis of pitch in schizophrenia"
+author: "Riccardo Fusaroli"
+date: "3/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+```
+
+# Building on the shoulders of giants: meta-analysis
+
+## Questions to be answered
+ 
+1. What is the current evidence for distinctive vocal patterns in schizophrenia? Report how many papers report quantitative estimates, comment on what percentage of the overall studies reviewed they represent (see PRISMA chart) your method to analyze them, the estimated effect size of the difference (mean effect size and standard error) and forest plots representing it. N.B. Only measures of pitch mean and pitch sd are required for the assignment. Feel free to ignore the rest (although pause behavior looks interesting, if you check my article).
+
+2. Do the results match your own analysis from Assignment 3? If you add your results to the meta-analysis, do the estimated effect sizes change? Report the new estimates and the new forest plots.
+
+3. Assess the quality of the literature: report and comment on heterogeneity of the studies (tau, I2), on publication bias (funnel plot), and on influential studies.
+
+## Tips on the process to follow:
+
+- Download the data on all published articles analyzing voice in schizophrenia and the prisma chart as reference of all articles found and reviewed
+- Look through the dataset to find out which columns to use, and if there is any additional information written as comments (real world data is always messy!).
+    * Hint: PITCH_F0M and PITCH_F0SD group of variables are what you need
+    * Hint: Make sure you read the comments in the columns: `pitch_f0_variability`, `frequency`, `Title`,  `ACOUST_ANA_DESCR`, `DESCRIPTION`, and `COMMENTS`
+- Following the procedure in the slides calculate effect size and standard error of the effect size per each study. N.B. we focus on pitch mean and pitch standard deviation.
+ . first try using lmer (to connect to what you know of mixed effects models)
+ . then use rma() (to get some juicy additional statistics)
+
+- Build a forest plot of the results (forest(model))
+ 
+- Go back to Assignment 3, add your own study to the data table, and re-run meta-analysis. Do the results change?
+
+- Now look at the output of rma() and check tau and I2
+
+
+
+
+
+
+```{r}
+### PREPROCESSING THE DATA
+
+## Loading packages
+pacman::p_load(pacman, readxl, tidyverse, metafor, plyr)
+
+dataset <- read_excel("Matrix_MetaAnalysis_Diagnosis_updated290719.xlsx")
+
+# Chosing the right vaiables for feature 1: 
+df_f1 <- dataset %>% filter(ArticleID, StudyID, SAMPLE_SIZE_HC, SAMPLE_SIZE_SZ, PITCH_F0_HC_M, PITCH_F0_SZ_M, PITCH_F0_HC_SD, PITCH_F0_SZ_SD) %>% select(ArticleID, StudyID, TYPE_OF_TASK, SAMPLE_SIZE_HC, SAMPLE_SIZE_SZ, PITCH_F0_HC_M, PITCH_F0_SZ_M, PITCH_F0_HC_SD, PITCH_F0_SZ_SD)
+
+# Chosing the right vaiables for feature 1: 
+df_f2 <- dataset %>% filter(ArticleID, StudyID, SAMPLE_SIZE_HC, SAMPLE_SIZE_SZ, PITCH_F0SD_HC_M, PITCH_F0SD_SZ_M, PITCH_F0SD_HC_SD, PITCH_F0SD_SZ_SD) %>% select(ArticleID, StudyID, TYPE_OF_TASK, SAMPLE_SIZE_HC, SAMPLE_SIZE_SZ, PITCH_F0SD_HC_M, PITCH_F0SD_SZ_M, PITCH_F0SD_HC_SD, PITCH_F0SD_SZ_SD)
+
+# Changing the column names to something more manageable 
+colnames(df_f1) <- c("articleID", "studyID","task", "n_hc", "n_sz", "f1_hc_mean", "f1_sz_mean", "f1_hc_sd", "f1_sz_sd")
+colnames(df_f2) <- c("articleID", "studyID", "task","n_hc", "n_sz", "f2_hc_mean", "f2_sz_mean", "f2_hc_sd", "f2_sz_sd")
+
+# Turning task into a factor
+df_f1$task <- as.factor(df_f1$task)
+df_f2$task <- as.factor(df_f2$task)
+
+write.csv(df_f1, "F1 Dataframe.csv")
+write.csv(df_f2, "F2 Dataframe.csv")
+
+### ANALYSIS (According to Riccardo's Slides)
+
+## First, an effect size / Cohen's d estimate is calculated for each study, and we don't want to do this manually (because the math is far too fancy). Instead, we use the metafor package to do so. IMPORTANTLY, this is done separately for pitch mean and pitch variability.
+
+## metafor uses the escalc function to give us an SMD for each study. It names this variable "yi". Additionally, it provides for us a variance estimate for each study called "vi". "i" references each individual study.
+
+
+# Effect size calculations for feature 1 (Participant's pitch mean)
+
+es_f1 <- escalc('SMD',
+                      n1i = n_hc,
+                      n2i = n_sz,
+                      m1i = f1_hc_mean, 
+                      m2i = f1_sz_mean,
+                      sd1i = f1_hc_sd, 
+                      sd2i = f1_sz_sd,
+                      data = df_f1)
+
+
+## Getting some numbers for reporting purposes:
+
+sum(es_f1$n_hc) #151 healthy controls in 6 studies
+sum(es_f1$n_sz) # 249 schizophrenics in 6 studies
+
+
+# Effect size calculations for feature 2 (Participant's pitch variability)
+es_f2 <- escalc('SMD',
+                      n1i = n_hc,
+                      n2i = n_sz,
+                      m1i = f2_hc_mean, 
+                      m2i = f2_sz_mean,
+                      sd1i = f2_hc_sd, 
+                      sd2i = f2_sz_sd,
+                      data = df_f2)
+
+
+sum(es_f2$n_hc) #449 healthy controls in 15 studies
+sum(es_f2$n_sz) #662 schizophrenics in 15 studies
+
+
+
+## So, now we have two variables added to the two datasets called yi and vi. Huzzah.
+
+## Now we want to do something with that yi variable, that Standardized Mean Difference. We can make an average between the studies, we can make a weighted average between the studies, or best of all, we can make a weighted average that takes into account the study heterogeneity (By including random intercepts for studies. Or something.) Don't think about it too hard.
+
+# Thus, the basic pattern becomes:
+
+
+mod_f1 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f1, weights = 1/vi, REML=F, control = lme4::lmerControl( 
+check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
+summary(mod_f1) # Alright, the estimated SMD is -0.2065.
+
+# This is the *weighted average effect size* (with heterogeneity taken into account) of the difference in feature 1 (Pitch Mean) between Healthy Controls and Schizophrenics across studies. Phew.
+
+# We may wish to include a fixed effect of type of task, to see if it changes anything:
+
+task_f1 <- lmerTest::lmer(yi ~ 1 + task + (1 | studyID), es_f1, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
+summary(task_f1)
+# Changing type of task does not significantly impact the SMD estimate. The SE for the estimates is unfortunately quite high, so we cannot hope to explain much variance between studies with referrence to task.
+# As a result, we won't be using this particular model for anything else.
+
+## Rinse repeat for F2:
+
+mod_f2 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f2, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
+summary(mod_f2) # Alright, the estimated SMD is 0.2333. So, hold on to your horses here, this is the weighted average standardized mean difference (with random effects) of the differences in Standard Deviation between Healthy Controls and Schizophrenics... across studies.
+
+# this is something we could ask Ricardo about.
+
+
+# Comparing the mod_f2 to the alternative model without random effects.
+mod_f2_alt <- lm(yi ~ 1, es_f2, weights = 1/vi)
+anova(mod_f2, mod_f2_alt)
+# the alternative model withour random effect is better (lower AIC and BIC scores)
+
+# We may wish to include a fixed effect of type of task, to see if it changes anything:
+
+task_f2 <- lmerTest::lmer(yi ~ 1 + task + (1 | studyID), es_f2, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
+summary(task_f2) # The standardized mean difference of Feature 2 changes significantly in a positive direction when moving from TASK_CONSTRUCTED to TASK_SOCIAL, in other words, this may mean that some of the heterogeneity between the studies (relating specifically to feature 2) is a product of the difference in task.
+
+### - Ask Riccardo if this is what was meant by context and whether we should do any more with it.
+
+
+# We may also wish to plot the results. Or maybe not.
+
+plot(mod_f1) # I would like some aid in interpreting this.
+plot(mod_f2) # THis plot is a bit weird with or without the random effects.
+
+### Ask Riccardo for help in interpreting the plots + whether we should report them.
+
+### Now, we can basically do all of the above using metafor's "rma" function.
+
+rma_f1 <- rma(yi, vi, data = es_f1, slab = studyID, weights = T)
+summary(rma_f1) # Gives a somewhat different output. Scaled, perhaps? ### ASK RICCARDO
+forest(rma_f1) # Nice forest plot of the metaanalysis! ...What does it show again?
+
+
+# Now with task 
+rma_f1_task <-rma(yi, vi, mods = cbind(task), data = es_f1, slab=studyID, weights = T)
+summary(rma_f1_task) # No significant effect of task. Consistent results. Yaaaay.
+forest(rma_f1_task)
+
+# For feature 2
+rma_f2 <- rma(yi, vi, data = es_f2, slab = studyID, weights = T)
+summary(rma_f2)
+
+# Tau^2 (estimated amount of total heterogeneity):
+#tau (square root of estimated tau^2 value):             0.3040
+#I^2 (residual heterogeneity / unaccounted variability): 55.34%
+#H^2 (unaccounted variability / sampling variability):   2.24
+#R^2 (amount of heterogeneity accounted for):            0.00%
+
+#Test for Residual Heterogeneity:
+#QE(df = 4) = 9.0272, p-val = 0.0604
+
+#Test of Moderators (coefficient 2):
+#QM(df = 1) = 0.5154, p-val = 0.4728
+
+forest(rma_f2)# It do be lookethening like there doth be an influential study, yo.15 <- dat one.
+
+# Now with task (again)
+rma_task_f2 <- rma(yi, vi, mods = cbind(task), data = es_f2, slab = studyID, weights = T)
+summary(rma_task_f2)
+#tau^2 (estimated amount of residual heterogeneity):     1.2275 (SE = 0.5120)
+#tau (square root of estimated tau^2 value):             1.1079
+#I^2 (residual heterogeneity / unaccounted variability): 95.16%
+#H^2 (unaccounted variability / sampling variability):   20.68
+#R^2 (amount of heterogeneity accounted for):            0.00%
+
+#Test for Residual Heterogeneity:
+#QE(df = 13) = 158.7379, p-val < .0001
+
+#Test of Moderators (coefficient 2):
+#QM(df = 1) = 0.7244, p-val = 0.3947
+
+
+forest(rma_task_f2)
+
+### WHAT WE DO WHEN WE DO QUALITY CHECKIN'.
+
+## First of all: Study Heterogeneity. All studies present some individual variance (within study) due to people being different and such. Between-study variance shows up as a result of different effect sizes. So the question becomes:
+
+# How much of the between-studies variance is reducible to the fact that the studies are uncertain (and aggregated estimates therefore will vary)? 
+
+# You calculate this using Tau (A measure of overall variance between studies). An essential component of tau is Q, which is the ratio of observed variance to within-study variance.
+
+# Based on Q, you can calculate I^2, which is an estimation of heterogeneity. GREAT. Now what?
+
+# The RMA's above have already done that though! We have estimates of all of that from it. It's just about reporting it, yea?
+# Yea.
+
+### TESTING FOR INFLUENTIAL STUDIES
+
+## Where does the heterogeneity come from? Probably from bad p-hacked studies with too few participants and bloated effect sizes (assuming of course there are any bad studies). How do we check for those?
+
+# We check residuals (of what!?):
+
+
+inf <-influence(rma_f1)
+print(inf)
+plot(inf)
+
+inf_f1 <- inf[["inf"]]
+write.csv(inf_f1, "inf_f1.csv")
+
+
+inf_2 <-influence(rma_f2)
+print(inf_2)
+plot(inf_2)
+
+
+inf_f2 <- inf_2[["inf"]]
+write.csv(inf_f2, "inf_f2.csv")
+
+# R student - Studentized residuals. Each residual divided by the estimate of it's standard deviation. Presumably, the greater the number, the higher the chance of it being an outlier.
+# DFFITS - Seems to be equivalent to do.coef
+
+
+
+
+### BUT WHAT ABOUT PUBLICATION BIAS!?
+
+## We test for that using Funnel Plots: Plotting effect size against standard error. That is, we check whether the larger the effect size the more unreliable the estimate (otherwise said, whether only bad studies have good results)
+
+funnel(rma_f1, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
+
+## Is a plot enough?
+
+regtest(rma_f1)
+ranktest(rma_f1)
+# None of these tests show significant assymetry.
+
+### INDEED, WHAT ABOUT PUBLICATION BIAS!?
+
+funnel(rma_f2, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
+
+## Is a plot enough?
+
+regtest(rma_f2)
+ranktest(rma_f2)
+# It's not not publication bias.
+
+
+```
+
+
+```{r}
+##### NEED TO DO #####
+# Compare with Assignment 3 analysis
+# Add data from assignment 3
+
+
+## Loading packages
+pacman::p_load(pacman, readxl, tidyverse, metafor, plyr)
+
+
+
+### briefly resetting the working directory!
+setwd("C:/Users/Asger/Desktop/Cognitive Science BA/3. Semester/ExpMeth 3/Assignments/Assignment-3/"); all_data <- read.csv("Fully Merged Data.csv"); setwd("C:/Users/Asger/Desktop/Cognitive Science BA/3. Semester/ExpMeth 3/Assignments/Assignment-5")
+
+manageable <- all_data %>%  select(Diagnosis, Study, Trial, Mean, StandardDev, ID)
+
+
+stuff <- manageable %>% group_by(Study, Diagnosis, ID) %>% dplyr::summarize(f1 = mean(Mean), f2=mean(StandardDev))
+
+# We now have an average variability measure AKA F2 AKA Standard Deviation for each trial, AND an average pitch average measure AKA F1 AKA mean of each trial... averaged.
+
+# And 
+
+stuff_2.0 <- stuff %>% group_by(Study, Diagnosis) %>% dplyr::summarize(f1_mean = mean(f1),f1_sd = sd(f1), f2_mean=mean(f2),f2_sd = sd(f2), sample_size = n())
+
+
+stuff_2.0
+
+a3_hc <- stuff_2.0 %>% filter(Diagnosis == "Control")
+a3_sz <- stuff_2.0 %>% filter(Diagnosis == "Schizophrenia")
+
+a3_hc$Diagnosis <- NULL
+a3_sz$Diagnosis <- NULL
+
+
+colnames(a3_hc) <- c("studyID","f1_hc_mean","f1_hc_sd", "f2_hc_mean", "f2_hc_sd", "n_hc")
+colnames(a3_sz) <- c("studyID","f1_sz_mean","f1_sz_sd", "f2_sz_mean", "f2_sz_sd", "n_sz")
+
+a3_data <- cbind(a3_hc, a3_sz)
+a3_data[,7] <- NULL
+
+a3_data$studyID <- a3_data$studyID + 9000 # IT'S OVER NINE THOUSAAAAAND
+
+write.csv(a3_data, "Assignment 3 Data.csv")
+
+### Fuckin'. Wonderful.
+
+a3_data <- read.csv("Assignment 3 Data.csv")
+
+a3_f1 <- a3_data %>% select("studyID","n_hc", "n_sz", "f1_hc_mean", "f1_sz_mean", "f1_hc_sd", "f1_sz_sd")
+
+a3_f2 <- a3_data %>% select("studyID", "n_hc", "n_sz", "f2_hc_mean", "f2_sz_mean", "f2_hc_sd", "f2_sz_sd")
+
+
+
+df_f1 <- read.csv("F1 Dataframe.csv")
+df_f2 <- read.csv("F2 Dataframe.csv")
+
+
+df_f1 <- df_f1 %>% select("studyID","n_hc", "n_sz", "f1_hc_mean", "f1_sz_mean", "f1_hc_sd", "f1_sz_sd")
+
+df_f2 <- df_f2 %>% select("studyID", "n_hc", "n_sz", "f2_hc_mean", "f2_sz_mean", "f2_hc_sd", "f2_sz_sd")
+
+
+
+# Removing columns that aren't in a3_data
+all_f1 <- rbind(df_f1, a3_f1)
+write.csv(all_f1, "Merged F1 Data.csv")
+all_f2 <- rbind(df_f2, a3_f2)
+write.csv(all_f2, "Merged F2 Data.csv")
+
+```
+
+
+
+```{r}
+##### NEED TO DO #####
+# Compare with Assignment 3 analysis
+# Add data from assignment 3
+
+
+## Loading packages
+pacman::p_load(pacman, readxl, tidyverse, metafor, plyr)
+
+all_f1 <- read.csv("Merged F1 Data.csv")
+all_f2 <- read.csv("Merged F2 Data.csv")
+
+
+es_f1_2 <- escalc('SMD',
+                      n1i = n_hc,
+                      n2i = n_sz,
+                      m1i = f1_hc_mean, 
+                      m2i = f1_sz_mean,
+                      sd1i = f1_hc_sd, 
+                      sd2i = f1_sz_sd,
+                      data = all_f1)
+
+
+
+sum(es_f1_2$n_hc) #322 healthy controls in 13 studies
+sum(es_f1_2$n_sz) #412 schizophrenics in 13 studies
+
+
+
+# Effect size calculations for feature 2 (Participant's pitch variability)
+es_f2_2 <- escalc('SMD',
+                      n1i = n_hc,
+                      n2i = n_sz,
+                      m1i = f2_hc_mean, 
+                      m2i = f2_sz_mean,
+                      sd1i = f2_hc_sd, 
+                      sd2i = f2_sz_sd,
+                      data = all_f2)
+
+sum(es_f2_2$n_hc) #670 healthy controls in 15 studies
+sum(es_f2_2$n_sz) #825 schizophrenics in 15 studies
+
+## Recreating the lmer models
+# Thus, the basic pattern becomes:
+?influence
+mod_f1_2 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f1_2, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
+summary(mod_f1_2) # We get boundary (singular) fit again. Ouch. Does it matter? WHo knows. Maybe Riccardo does.
+
+# This is the *weighted average effect size* (with heterogeneity taken into account) of the difference in feature 1 (Pitch Mean) between Healthy Controls and Schizophrenics across studies. Phew.
+
+# We may wish to include a fixed effect of type of task, to see if it changes anything:
+
+# Comparing the mod_f1_2 model to the alternative model withour random effects.
+mod_f1_2_alt <- lm(yi ~ 1, es_f1_2, weights = 1/vi)
+anova(mod_f1_2, mod_f1_2_alt)
+# the alternative model is again better 
+
+## Rinse repeat for F2:
+
+mod_f2_2 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f2_2, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
+summary(mod_f2_2) # Interestingly, similar results. 
+
+# Again comparing to the alternative model without random effects - the alt. model is better.
+mod_f2_2_alt <- lm(yi ~ 1, es_f2_2, weights = 1/vi)
+anova(mod_f2_2, mod_f2_2_alt)
+
+# Once again...... this is the weighted average standardized mean difference (with random effects) of the differences in Standard Deviation between Healthy Controls and Schizophrenics... across studies.
+
+# We may also wish to plot the results. Or maybe not.
+
+plot(mod_f1_2) # I would like some aid in interpreting this.
+plot(mod_f2_2) # THis plot is a bit weird with or without the random effects.
+
+### Ask Riccardo for help in interpreting the plots + whether we should report them.
+
+### Now, we can basically do all of the above using metafor's "rma" function.
+
+rma_f1_2 <- rma(yi, vi, data = es_f1_2, slab = studyID, weights = T)
+summary(rma_f1_2) # Gives a somewhat different output. Scaled, perhaps? ### ASK RICCARDO
+forest(rma_f1_2) # Nice forest plot of the metaanalysis! ...What does it show again?
+
+# For feature 2
+rma_f2_2 <- rma(yi, vi, data = es_f2_2, slab = studyID, weights = T)
+summary(rma_f2_2)
+
+
+forest(rma_f2_2)# It do be lookethening like there doth be an influential study, yo.15 <- dat one.
+
+### TESTING FOR INFLUENTIAL STUDIES
+
+## Where does the heterogeneity come from? Probably from bad p-hacked studies with too few participants and bloated effect sizes (assuming of course there are any bad studies). How do we check for those?
+
+# We check residuals (of what!?):
+
+
+inf_3 <-influence(rma_f1_2)
+print(inf_3)
+plot(inf_3)
+
+inf_f1_2 <- inf_3[["inf"]]
+write.csv(inf_f1_2, "inf_f1_2.csv")
+
+
+
+inf_4 <-influence(rma_f2_2)
+print(inf_4)
+plot(inf_4)
+
+inf_f2_2 <- inf_4[["inf"]]
+write.csv(inf_f2_2, "inf_f2_2.csv")
+
+
+### BUT WHAT ABOUT PUBLICATION BIAS!?
+
+## We test for that using Funnel Plots: Plotting effect size against standard error. That is, we check whether the larger the effect size the more unreliable the estimate (otherwise said, whether only bad studies have good results)
+
+funnel(rma_f1_2, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
+
+## Is a plot enough?
+
+regtest(rma_f1_2)
+ranktest(rma_f1_2)
+# None of these tests show significant assymetry.
+
+### INDEED, WHAT ABOUT PUBLICATION BIAS!?
+
+funnel(rma_f2_2, main = "Random-Effects Model", xlab = "Standardized Mean Difference")
+
+## Is a plot enough?
+
+regtest(rma_f2_2)
+ranktest(rma_f2_2)
+# It's not not publication bias.
+
+
+
+
+```
