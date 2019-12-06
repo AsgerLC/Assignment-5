@@ -88,7 +88,8 @@ Test of moderators = Wald-type chi-square test with X degrees of freedom, testin
 pacman::p_load(pacman, readxl, tidyverse, metafor, plyr)
 
 dataset <- read_excel("Matrix_MetaAnalysis_Diagnosis_updated290719.xlsx")
-
+?influence
+?select
 # Chosing the right vaiables for feature 1: 
 df_f1 <- dataset %>% filter(ArticleID, StudyID, SAMPLE_SIZE_HC, SAMPLE_SIZE_SZ, PITCH_F0_HC_M, PITCH_F0_SZ_M, PITCH_F0_HC_SD, PITCH_F0_SZ_SD) %>% select(ArticleID, StudyID, TYPE_OF_TASK, SAMPLE_SIZE_HC, SAMPLE_SIZE_SZ, PITCH_F0_HC_M, PITCH_F0_SZ_M, PITCH_F0_HC_SD, PITCH_F0_SZ_SD)
 
@@ -153,7 +154,9 @@ sum(es_f2$n_sz) #662 schizophrenics in 15 studies
 
 # Thus, the basic pattern becomes:
 
-mod_f1 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f1, weights = 1/vi, REML=F, control = lme4::lmerControl( check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
+
+mod_f1 <- lmerTest::lmer(yi ~ 1 + (1 | studyID), es_f1, weights = 1/vi, REML=F, control = lme4::lmerControl( 
+check.nobs.vs.nlev ='ignore', check.nobs.vs.nRE = 'ignore'))
 summary(mod_f1) # Alright, the estimated SMD is -0.2065.
 
 # This is the *weighted average effect size* (with heterogeneity taken into account) of the difference in feature 1 (Pitch Mean) between Healthy Controls and Schizophrenics across studies. Phew.
@@ -195,28 +198,18 @@ plot(mod_f2) # THis plot is a bit weird with or without the random effects.
 
 ### Now, we can basically do all of the above using metafor's "rma" function.
 
-rma_f1 <- rma(yi, vi, data = es_f1, slab = studyID)
+rma_f1 <- rma(yi, vi, data = es_f1, slab = studyID, weights = T)
 summary(rma_f1) # Gives a somewhat different output. Scaled, perhaps? ### ASK RICCARDO
 forest(rma_f1) # Nice forest plot of the metaanalysis! ...What does it show again?
 
-#estimate      se     zval    pval    ci.lb   ci.ub 
-# -0.1628  0.1554  -1.0476  0.2948  -0.4672  0.1417    
 
-#tau^2 (estimated amount of total heterogeneity): 0.0712 (SE = 0.0908)
-#tau (square root of estimated tau^2 value):      0.2668
-#I^2 (total heterogeneity / total variability):   50.29%
-#H^2 (total variability / sampling variability):  2.01
-
-#Test for Heterogeneity:
-#Q(df = 5) = 9.8472, p-val = 0.0797
-?rma
 # Now with task 
-rma_f1_task <-rma(yi, vi, mods = cbind(task), data = es_f1, slab=studyID)
+rma_f1_task <-rma(yi, vi, mods = cbind(task), data = es_f1, slab=studyID, weights = T)
 summary(rma_f1_task) # No significant effect of task. Consistent results. Yaaaay.
 forest(rma_f1_task)
 
 # For feature 2
-rma_f2 <- rma(yi, vi, data = es_f2, slab = studyID)
+rma_f2 <- rma(yi, vi, data = es_f2, slab = studyID, weights = T)
 summary(rma_f2)
 
 # Tau^2 (estimated amount of total heterogeneity):
@@ -234,7 +227,7 @@ summary(rma_f2)
 forest(rma_f2)# It do be lookethening like there doth be an influential study, yo.15 <- dat one.
 
 # Now with task (again)
-rma_task_f2 <- rma(yi, vi, mods = cbind(task), data = es_f2, slab = studyID)
+rma_task_f2 <- rma(yi, vi, mods = cbind(task), data = es_f2, slab = studyID, weights = T)
 summary(rma_task_f2)
 #tau^2 (estimated amount of residual heterogeneity):     1.2275 (SE = 0.5120)
 #tau (square root of estimated tau^2 value):             1.1079
@@ -275,10 +268,17 @@ inf <-influence(rma_f1)
 print(inf)
 plot(inf)
 
+inf_f1 <- inf[["inf"]]
+write.csv(inf_f1, "inf_f1.csv")
+
 
 inf_2 <-influence(rma_f2)
 print(inf_2)
 plot(inf_2)
+
+
+inf_f2 <- inf_2[["inf"]]
+write.csv(inf_f2, "inf_f2.csv")
 
 # R student - Studentized residuals. Each residual divided by the estimate of it's standard deviation. Presumably, the greater the number, the higher the chance of it being an outlier.
 # DFFITS - Seems to be equivalent to do.coef
@@ -464,40 +464,13 @@ plot(mod_f2_2) # THis plot is a bit weird with or without the random effects.
 
 ### Now, we can basically do all of the above using metafor's "rma" function.
 
-rma_f1_2 <- rma(yi, vi, data = es_f1_2, slab = studyID)
+rma_f1_2 <- rma(yi, vi, data = es_f1_2, slab = studyID, weights = T)
 summary(rma_f1_2) # Gives a somewhat different output. Scaled, perhaps? ### ASK RICCARDO
 forest(rma_f1_2) # Nice forest plot of the metaanalysis! ...What does it show again?
 
-#tau^2 (estimated amount of total heterogeneity): 0.0931 (SE = 0.0721)
-#tau (square root of estimated tau^2 value):      0.3051
-#I^2 (total heterogeneity / total variability):   53.98%
-#H^2 (total variability / sampling variability):  2.17
-
-#Test for Heterogeneity:
-#Q(df = 12) = 27.1776, p-val = 0.0073
-
-#Model Results:
-
-#estimate      se     zval    pval    ci.lb   ci.ub 
-# -0.0569  0.1179  -0.4828  0.6293  -0.2879  0.1741    
-
-
 # For feature 2
-rma_f2_2 <- rma(yi, vi, data = es_f2_2, slab = studyID)
+rma_f2_2 <- rma(yi, vi, data = es_f2_2, slab = studyID, weights = T)
 summary(rma_f2_2)
-
-#tau^2 (estimated amount of total heterogeneity): 0.7931 (SE = 0.2718)
-#tau (square root of estimated tau^2 value):      0.8906
-#I^2 (total heterogeneity / total variability):   92.00%
-#H^2 (total variability / sampling variability):  12.50
-
-#Test for Heterogeneity:
-#Q(df = 21) = 171.6114, p-val < .0001
-
-#Model Results:
-
-#estimate      se    zval    pval    ci.lb   ci.ub 
-#  0.2490  0.2002  1.2434  0.2137  -0.1435  0.6414 
 
 
 forest(rma_f2_2)# It do be lookethening like there doth be an influential study, yo.15 <- dat one.
@@ -513,10 +486,17 @@ inf_3 <-influence(rma_f1_2)
 print(inf_3)
 plot(inf_3)
 
+inf_f1_2 <- inf_3[["inf"]]
+write.csv(inf_f1_2, "inf_f1_2.csv")
+
+
 
 inf_4 <-influence(rma_f2_2)
 print(inf_4)
 plot(inf_4)
+
+inf_f2_2 <- inf_4[["inf"]]
+write.csv(inf_f2_2, "inf_f2_2.csv")
 
 
 ### BUT WHAT ABOUT PUBLICATION BIAS!?
